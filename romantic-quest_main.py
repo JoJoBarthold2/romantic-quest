@@ -5,6 +5,7 @@ from datetime import datetime
 from fpdf import FPDF
 import argparse
 from google import genai
+import google.api_core.exceptions
 
 
 def create_message_with_reasoning_claude(prompt, output_dir="outputs"):
@@ -39,55 +40,118 @@ def create_message_with_reasoning_claude(prompt, output_dir="outputs"):
         system="To answer this question, use reasoning mode to think through the answer step by step.",
         thinking={"type": "enabled", "budget_tokens": 1024},
     )
+    print("Claude Response:")
     print(message.content)
-    print("Thinking block")
-    print(message.content[0])
+    print("Thinking block:")
+    if message.content and len(message.content) > 0:
+        print(message.content[0])
     print("----------------")
     print("Text block:")
-    print(message.content[1].text)
-    print("----------------")
-    response_text = message.content[1].text
+    if message.content and len(message.content) > 1:
+        print(message.content[1].text)
+        response_text = message.content[1].text
 
-    # Save to text file
-    with open(f"{filename_base}.txt", "w", encoding="utf-8") as txt_file:
-        txt_file.write(response_text)
+        # Save to text file
+        with open(f"{filename_base}.txt", "w", encoding="utf-8") as txt_file:
+            txt_file.write(response_text)
 
-    # Save to PDF
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
+        # Save to PDF
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
 
-    # Split text into lines to handle line breaks
-    lines = response_text.split("\n")
-    for line in lines:
-        # Add wrapped text
-        pdf.multi_cell(0, 10, line)
+        # Split text into lines to handle line breaks
+        lines = response_text.split("\n")
+        for line in lines:
+            # Add wrapped text
+            pdf.multi_cell(0, 10, line)
 
-    pdf.output(f"{filename_base}.pdf")
-    ### markdown zu pdf
-    print(f"Response saved to {filename_base}.txt and {filename_base}.pdf")
+        pdf.output(f"{filename_base}.pdf")
+        print(f"Claude response saved to {filename_base}.txt and {filename_base}.pdf")
+    else:
+        print("Claude response content is empty or does not have the expected structure.")
 
     return message
 
 
+def create_book_with_gemini(prompt, output_dir="outputs"):
+    """
+    Create a book using Gemini and export to txt and pdf
+
+    Args:
+        prompt (str): The prompt to send to Gemini
+        output_dir (str): Directory to save output files
+
+    Returns:
+        dict: The message response from Gemini
+    """
+    # Create output directory if it doesn't exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    api_key = os.environ.get("GEMINI_API_KEY")
+    # Initialize the client
+    client = genai.Client(
+      api_key=  api_key
+    )
+
+    # Create timestamp for filenames
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename_base = f"{output_dir}/gemini_response_{timestamp}"
+
+    
+ 
+
+    response = client.models.generate_content(
+    model="gemini-2.0-flash",
+    contents=prompt,
+        )
+
+    print(response.text)
+
+
+
 # Example usage
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate a sonnet using Claude.")
+    parser = argparse.ArgumentParser(description="Generate text using Claude and/or Gemini.")
     parser.add_argument(
         "--prompt",
         type=str,
         default="I would like a sonnet about love",
-        help="Prompt to send",
+        help="Prompt to send to the model(s)",
     )
     parser.add_argument(
-        "--model", type=str, default="claude-3-7-sonnet-20250219", help="Model to use"
+        "--claude", action="store_true", help="Call Claude to generate a response"
     )
     parser.add_argument(
-        "--use_reasoning", action="store_true", help="Use reasoning mode"
+        "--gemini", action="store_true", help="Call Gemini to generate a response"
+    )
+    parser.add_argument(
+        "--claude_model",
+        type=str,
+        default="claude-3-7-sonnet-20250219",
+        help="Claude model to use",
+    )
+    parser.add_argument(
+        "--gemini_model",
+        type=str,
+        default="gemini-pro",
+        help="Gemini model to use",
+    )
+    parser.add_argument(
+        "--use_reasoning",
+        action="store_true",
+        help="Use reasoning mode for Claude (if called)",
     )
     args = parser.parse_args()
     prompt = args.prompt
-    model = args.model
-    if model == "claude-3-7-sonnet-20250219":
-        message = create_message_with_reasoning_claude(prompt)
-    print(message.content[0].text)
+
+    if args.claude:
+        if args.claude_model == "claude-3-7-sonnet-20250219" and args.use_reasoning:
+            claude_response = create_message_with_reasoning_claude(prompt)
+            if claude_response and claude_response.content and len(claude_response.content) > 0:
+                print("\nClaude Thinking Block Text:")
+                print(claude_response.content[0].text)
+       
+
+    if args.gemini:
+       create_book_with_gemini(prompt)
