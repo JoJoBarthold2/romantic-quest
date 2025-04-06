@@ -82,6 +82,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model", type=str, default="claude-3-7-sonnet-20250219", help="Model to use"
     )
+    parser.add_argument(
+        "--use_reasoning", action="store_true", help="Use reasoning mode"
+    )
     args = parser.parse_args()
     prompt = args.prompt
     model = args.model
