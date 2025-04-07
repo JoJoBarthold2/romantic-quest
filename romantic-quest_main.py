@@ -6,9 +6,30 @@ from fpdf import FPDF
 import argparse
 from google import genai
 import google.api_core.exceptions
+import logging
 
+logging.basicConfig(level=logging.INFO)
 
-def create_message_with_reasoning_claude(prompt, output_dir="outputs"):
+def save_to_txt_and_pdf(text, filename_base):
+    """
+    Save the text to both txt and pdf files.
+
+    Args:
+        text (str): The text to save
+        filename_base (str): Base filename for the output files
+    """
+    # Save to txt file
+    with open(f"{filename_base}.txt", "w") as txt_file:
+        txt_file.write(text)
+
+    # Save to pdf file
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 10, text)
+    pdf.output(f"{filename_base}.pdf")
+
+def create_message_with_reasoning_claude(prompt, output_dir="outputs", system_prompt="You are an experienced writer that writes dark romance novels."):
     """
     Create a message using Claude with reasoning mode enabled and export to txt and pdf
 
@@ -19,7 +40,7 @@ def create_message_with_reasoning_claude(prompt, output_dir="outputs"):
     Returns:
         dict: The message response from Claude
     """
-    # Create output directory if it doesn't exist
+    
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -29,52 +50,26 @@ def create_message_with_reasoning_claude(prompt, output_dir="outputs"):
     )
 
     # Create timestamp for filenames
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+   
+    timestamp = datetime.now().strftime("%d_%m_%Y_%Hh_%Mmin")
     filename_base = f"{output_dir}/claude_response_{timestamp}"
-
+    system_prompt =  "To fulfill this task, use reasoning mode to think through the answer step by step. " + system_prompt
+    logging.info(f"System prompt: {system_prompt}")
     # Create the message with reasoning mode enabled
     message = client.messages.create(
         model="claude-3-7-sonnet-20250219",
         max_tokens=2024,
         messages=[{"role": "user", "content": prompt}],
-        system="To answer this question, use reasoning mode to think through the answer step by step.",
+        system= system_prompt,
         thinking={"type": "enabled", "budget_tokens": 1024},
     )
-    print("Claude Response:")
-    print(message.content)
-    print("Thinking block:")
-    if message.content and len(message.content) > 0:
-        print(message.content[0])
-    print("----------------")
-    print("Text block:")
-    if message.content and len(message.content) > 1:
-        print(message.content[1].text)
-        response_text = message.content[1].text
-
-        # Save to text file
-        with open(f"{filename_base}.txt", "w", encoding="utf-8") as txt_file:
-            txt_file.write(response_text)
-
-        # Save to PDF
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
-
-        # Split text into lines to handle line breaks
-        lines = response_text.split("\n")
-        for line in lines:
-            # Add wrapped text
-            pdf.multi_cell(0, 10, line)
-
-        pdf.output(f"{filename_base}.pdf")
-        print(f"Claude response saved to {filename_base}.txt and {filename_base}.pdf")
-    else:
-        print("Claude response content is empty or does not have the expected structure.")
-
+    logging.info(f"Claude response: {message}")
+    save_to_txt_and_pdf(message.content[1].text, filename_base)
     return message
 
 
-def create_book_with_gemini(prompt, output_dir="outputs"):
+
+def create_book_with_gemini(prompt, output_dir="outputs", system_prompt="You are an experienced writer that writes dark romance novels."):
     """
     Create a book using Gemini and export to txt and pdf
 
@@ -95,7 +90,7 @@ def create_book_with_gemini(prompt, output_dir="outputs"):
     )
 
     # Create timestamp for filenames
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%d_%m_%Y_%Hh_%Mmin")
     filename_base = f"{output_dir}/gemini_response_{timestamp}"
 
     
@@ -104,10 +99,20 @@ def create_book_with_gemini(prompt, output_dir="outputs"):
     response = client.models.generate_content(
     model="gemini-2.0-flash",
     contents=prompt,
+    system_prompt=system_prompt,
         )
 
-    print(response.text)
+    logging.info(f"Gemini response: {response}")
 
+    logging.info(f"Gemini response text: {response.text}")
+
+    save_to_txt_and_pdf(response.text, filename_base)
+    return response
+
+
+    
+
+    
 
 
 # Example usage
@@ -142,16 +147,18 @@ if __name__ == "__main__":
         action="store_true",
         help="Use reasoning mode for Claude (if called)",
     )
+    parser.add_argument("--system_prompt", type=str, default="You are an experienced writer that writes dark romance novels. You are eager to write your new book. You take care to create a consitent narrative. You don't refrain from writing about sexual themes when necessary. However you keep it tasteful.", help="System prompt for the model")
+    parser.add_argument( "--debug", action="store_true", help="Enable debug mode"
+    )
     args = parser.parse_args()
     prompt = args.prompt
-
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+    logging.debug(f"Prompt: {prompt}")
     if args.claude:
-        if args.claude_model == "claude-3-7-sonnet-20250219" and args.use_reasoning:
-            claude_response = create_message_with_reasoning_claude(prompt)
-            if claude_response and claude_response.content and len(claude_response.content) > 0:
-                print("\nClaude Thinking Block Text:")
-                print(claude_response.content[0].text)
-       
+        if args.claude_model == "claude-3-7-sonnet-20250219":
+            claude_response = create_message_with_reasoning_claude(prompt, output_dir="outputs", system_prompt=args.system_prompt)
+            
 
     if args.gemini:
        create_book_with_gemini(prompt)
