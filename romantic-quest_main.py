@@ -5,6 +5,7 @@ from datetime import datetime
 from fpdf import FPDF
 import argparse
 from google import genai
+from google.genai import types
 import google.api_core.exceptions
 import logging
 
@@ -19,17 +20,19 @@ def save_to_txt_and_pdf(text, filename_base):
         filename_base (str): Base filename for the output files
     """
     # Save to txt file
-    with open(f"{filename_base}.txt", "w") as txt_file:
+    with open(f"{filename_base}.txt", "w", encoding="utf-8") as txt_file:
         txt_file.write(text)
+    str_bytes = text.encode('utf-8')         # Convert string to UTF-8 bytes
+    decoded_str = str_bytes.decode('latin-1')    # Decode as ISO-8859-1 (mimics utf8_decode)
 
     # Save to pdf file
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Arial", size=12)
-    pdf.multi_cell(0, 10, text)
+    pdf.multi_cell(0, 10, decoded_str)
     pdf.output(f"{filename_base}.pdf")
 
-def create_message_with_reasoning_claude(prompt, output_dir="outputs", system_prompt="You are an experienced writer that writes dark romance novels."):
+def create_message_with_reasoning_claude(prompt, output_dir="outputs", system_prompt="You are an experienced writer that writes dark romance novels.", max_tokens=2024):
     """
     Create a message using Claude with reasoning mode enabled and export to txt and pdf
 
@@ -55,15 +58,17 @@ def create_message_with_reasoning_claude(prompt, output_dir="outputs", system_pr
     filename_base = f"{output_dir}/claude_response_{timestamp}"
     system_prompt =  "To fulfill this task, use reasoning mode to think through the answer step by step. " + system_prompt
     logging.info(f"System prompt: {system_prompt}")
+    logging.info(f"Max tokens: {max_tokens}")
     # Create the message with reasoning mode enabled
     message = client.messages.create(
         model="claude-3-7-sonnet-20250219",
-        max_tokens=2024,
+        max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
         system= system_prompt,
         thinking={"type": "enabled", "budget_tokens": 1024},
     )
     logging.info(f"Claude response: {message}")
+    #logging.info(f"Output tokens: {message.content[]}")
     save_to_txt_and_pdf(message.content[1].text, filename_base)
     return message
 
@@ -99,7 +104,8 @@ def create_book_with_gemini(prompt, output_dir="outputs", system_prompt="You are
     response = client.models.generate_content(
     model="gemini-2.0-flash",
     contents=prompt,
-    system_prompt=system_prompt,
+    config= types.GenerateContentConfig(
+        system_instruction=system_prompt),
         )
 
     logging.info(f"Gemini response: {response}")
@@ -147,7 +153,8 @@ if __name__ == "__main__":
         action="store_true",
         help="Use reasoning mode for Claude (if called)",
     )
-    parser.add_argument("--system_prompt", type=str, default="You are an experienced writer that writes dark romance novels. You are eager to write your new book. You take care to create a consitent narrative. You don't refrain from writing about sexual themes when necessary. However you keep it tasteful.", help="System prompt for the model")
+    parser.add_argument("--max_tokens", type=int, default=2024, help="Max tokens for the model")
+    parser.add_argument("--system_prompt", type=str, default="You are an experienced writer that writes dark romance novels in german. You are eager to write your new book. You take care to create a consitent narrative. You don't refrain from writing about sexual themes when necessary. However you keep it tasteful.", help="System prompt for the model")
     parser.add_argument( "--debug", action="store_true", help="Enable debug mode"
     )
     args = parser.parse_args()
@@ -157,7 +164,7 @@ if __name__ == "__main__":
     logging.debug(f"Prompt: {prompt}")
     if args.claude:
         if args.claude_model == "claude-3-7-sonnet-20250219":
-            claude_response = create_message_with_reasoning_claude(prompt, output_dir="outputs", system_prompt=args.system_prompt)
+            claude_response = create_message_with_reasoning_claude(prompt, output_dir="outputs", system_prompt=args.system_prompt, max_tokens=args.max_tokens)
             
 
     if args.gemini:
